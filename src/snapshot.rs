@@ -39,6 +39,8 @@ pub struct Snapshot {
     pub torrents: Vec<Torrent>,
     pub files: HashMap<String, Vec<File>>,
     pub downloads: Vec<Download>,
+    /// Torrents in an arr's category that its queue does not list.
+    pub untracked: Vec<String>,
 }
 
 impl Snapshot {
@@ -79,6 +81,12 @@ impl Snapshot {
             }
         }
         downloads.sort_by(|a, b| (a.arr, &a.hash).cmp(&(b.arr, &b.hash)));
+        let untracked = torrents
+            .iter()
+            .filter(|t| config.owner(&t.category).is_some())
+            .filter(|t| !downloads.iter().any(|d| d.hash == t.hash))
+            .map(|t| t.hash.clone())
+            .collect();
 
         Snapshot {
             now,
@@ -86,6 +94,7 @@ impl Snapshot {
             torrents,
             files,
             downloads,
+            untracked,
         }
     }
 
@@ -200,6 +209,31 @@ mod tests {
         };
         let snapshot = Snapshot::build(&config(), 0, vec![], None, HashMap::new(), &[view]);
         assert!(snapshot.downloads.is_empty());
+    }
+
+    #[test]
+    fn torrents_an_arr_does_not_list_are_untracked() {
+        let view = ArrView {
+            records: vec![record(1, "AB", 101)],
+            ..ArrView::default()
+        };
+        let snapshot = Snapshot::build(
+            &config(),
+            0,
+            vec![
+                torrent("ab", State::StalledDL, "tv-sonarr"),
+                torrent("cd", State::StalledDL, "tv-sonarr"),
+                torrent("ef", State::StalledDL, "comics"),
+            ],
+            None,
+            HashMap::new(),
+            &[view],
+        );
+        assert_eq!(
+            snapshot.untracked,
+            ["cd"],
+            "qBit-only categories have no queue"
+        );
     }
 
     #[test]

@@ -43,6 +43,7 @@ pub fn torrent(hash: &str, state: State, category: &str) -> Torrent {
         progress: 0.0,
         downloaded: 0,
         size: 1 << 30,
+        amount_left: 1 << 30,
     }
 }
 

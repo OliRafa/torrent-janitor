@@ -5,6 +5,8 @@
 mod duplicate;
 mod failed_import;
 mod fake;
+mod orphan;
+mod space;
 mod stalled;
 
 use std::collections::HashSet;
@@ -15,6 +17,8 @@ use regex::RegexSet;
 use crate::config;
 use crate::observe::Observations;
 use crate::snapshot::Snapshot;
+
+pub use space::TAG as SPACE_TAG;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -62,6 +66,19 @@ pub struct Removal {
     pub detail: String,
 }
 
+/// What the rules want besides removals.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Upkeep {
+    /// Below the low mark: stop and tag with `SPACE_TAG`.
+    pub stop: Vec<String>,
+    /// Stopped for space and fitting again: start and untag.
+    pub start: Vec<String>,
+    /// In error: start, which counts an attempt.
+    pub recover: Vec<String>,
+    /// Report only.
+    pub orphans: Vec<String>,
+}
+
 #[derive(Debug)]
 pub struct RuleSet {
     config: config::Rules,
@@ -102,6 +119,15 @@ impl RuleSet {
             removals.extend(duplicates);
         }
         removals
+    }
+
+    pub fn upkeep(&self, snapshot: &Snapshot, observations: &Observations) -> Upkeep {
+        let rules = &self.config;
+        let mut upkeep = space::evaluate(snapshot, observations, &rules.free_space, &rules.recover);
+        if rules.orphan.enabled {
+            upkeep.orphans = orphan::evaluate(snapshot, observations);
+        }
+        upkeep
     }
 }
 

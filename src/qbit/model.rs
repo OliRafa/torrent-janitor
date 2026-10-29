@@ -38,6 +38,10 @@ impl State {
     pub fn is_stalled(self) -> bool {
         self.is_metadata() || self == State::StalledDL
     }
+
+    pub fn is_stopped(self) -> bool {
+        matches!(self, State::StoppedDL | State::StoppedUP)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -55,6 +59,9 @@ pub struct Torrent {
     pub progress: f64,
     pub downloaded: u64,
     pub size: i64,
+    /// Bytes still to download; 0 until metadata is in.
+    #[serde(default)]
+    pub amount_left: u64,
 }
 
 impl Torrent {
@@ -120,6 +127,7 @@ mod tests {
             progress: 0.0,
             downloaded: 0,
             size: 0,
+            amount_left: 0,
         };
         assert!(torrent.has_tag("janitor:space"));
         assert!(torrent.has_tag("other"));
