@@ -1,0 +1,32 @@
+[
+  {
+    "availability": 1,
+    "index": 0,
+    "is_seed": false,
+    "name": "Example.Show.S01.1080p.WEB-DL-GRP/Example.Show.S01E01.1080p.WEB-DL-GRP.mkv",
+    "piece_range": [0, 1102],
+    "priority": 1,
+    "progress": 0.42,
+    "size": 1156579328
+  },
+  {
+    "availability": 1,
+    "index": 1,
+    "is_seed": false,
+    "name": "Example.Show.S01.1080p.WEB-DL-GRP/Example.Show.S01E02.1080p.WEB-DL-GRP.mkv",
+    "piece_range": [1102, 2190],
+    "priority": 1,
+    "progress": 0,
+    "size": 1141243904
+  },
+  {
+    "availability": 1,
+    "index": 2,
+    "is_seed": false,
+    "name": "Example.Show.S01.1080p.WEB-DL-GRP/RELEASE_NOTES.exe",
+    "piece_range": [2190, 2190],
+    "priority": 0,
+    "progress": 0,
+    "size": 99
+  }
+]
