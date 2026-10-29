@@ -1,0 +1,57 @@
+# Every key below shows its default unless marked otherwise. Durations take
+# humantime ("90s", "30m", "3h"); sizes take binary units ("25G").
+
+interval = "60s"
+dry_run = true                 # log and count decisions, change nothing
+max_removals_per_cycle = 10
+listen = "0.0.0.0:9090"        # /healthz and /metrics
+
+[qbit]
+url = "http://qbittorrent:8080"   # required; the WebUI must skip auth for this client
+categories = []                   # qBit-only categories: removed directly, never blocklisted
+
+[[arr]]                           # one per Sonarr/Radarr; none by default
+kind = "sonarr"
+url = "http://sonarr:8989/sonarr" # include the UrlBase
+api_key_env = "SONARR_API_KEY"
+category = "tv-sonarr"
+
+[[arr]]
+kind = "radarr"
+url = "http://radarr:7878/radarr"
+api_key_env = "RADARR_API_KEY"
+category = "movies-radarr"
+
+[rules.fake]
+enabled = true
+# media = ["*.mkv", "*.mp4", ...]      a torrent with none of these...
+# executables = ["*.exe", "*.bat", ...] ...and one of these is fake
+
+[rules.stalled]                # counts only observed time stalled, never queued time
+enabled = true
+metadata_after = "30m"
+stalled_after = "3h"
+
+[rules.duplicate]
+enabled = true
+keep = 2                       # downloads allowed side by side per episode/movie
+
+[rules.failed_import]
+enabled = true
+patterns = ["^Not an upgrade for existing", "^Not a Custom Format upgrade for existing", "^No files found are eligible for import"]
+research = false
+
+[rules.free_space]
+enabled = true
+low = "25G"                    # stop downloads below this
+high = "50G"                   # start them again above this
+
+[rules.recover]
+enabled = true
+max_attempts = 3               # restarts per errored torrent
+
+[rules.orphan]
+enabled = true                 # report only
+
+[rules.budget]
+max_researches_per_day = 2     # per episode/movie; beyond it, removal skips the re-search

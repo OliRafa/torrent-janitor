@@ -7,11 +7,13 @@ description = "Keeps qBittorrent queues healthy for Sonarr and Radarr"
 publish = false
 
 [dependencies]
+humantime-serde = "1.1.1"
 reqwest = { version = "0.13.5", default-features = false, features = ["form", "json", "query"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "time", "signal", "net"] }
+toml = "1.1.8"
 
 [dev-dependencies]
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "time", "signal", "net", "test-util"] }
