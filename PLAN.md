@@ -50,6 +50,7 @@ and needs a maintainer; qBitrr has the same `added_on` bug.
 | Rule | Fires when | Action | Blocklist | Re-search |
 |---|---|---|---|---|
 | `fake` | Metadata is known, and no file has a media extension, while at least one file matches the executable list. Media counts even when deselected: genuine releases end up with every file deselected, and Blu-ray discs carry BD-J `.jar` menus (both seen in the first dry-run). | Remove via the arr | yes | budgeted |
+| `disc` | Metadata is known and a path component matches the disc list (`BDMV`, `VIDEO_TS`, `*.iso`, `*.img`), selected or not: a whole disc instead of video files. Release titles often hide it (TRaSH's BR-DISK format skips titles tagged H.265), so this reads the files. | Remove via the arr | yes | budgeted |
 | `stalled` | State is `metaDL` or `stalledDL` (not queued, stopped, checking or forced-off) with no increase in `downloaded` for `stall_after` of observed active time. Separate thresholds for metaDL and stalledDL. | Remove via the arr | yes | budgeted |
 | `duplicate` | One episode or movie has more than `keep` (default 2) distinct `downloadId`s in the arr queue | Keep the best `keep` (below), remove the rest | no | no (`skipRedownload`) |
 | `failed_import` | `trackedDownloadState` is `importPending`/`importBlocked` and a status message matches a configured regex | Remove via the arr | yes | configurable |
@@ -94,7 +95,7 @@ src/arr/           Sonarr/Radarr v3 client: paged queue, DELETE queue/{id}
 src/snapshot.rs    one consistent view: torrents ⋈ queue records by hash
 src/observe.rs     per-hash memory: last state, last downloaded bytes,
                    accumulated active-no-progress time, first seen
-src/rules/         fake, stalled, duplicate, failed_import, free_space, recover, orphan
+src/rules/         fake, disc, stalled, duplicate, failed_import, free_space, recover, orphan
 src/plan.rs        one removal per download; routing, cap and budget; upkeep
 src/budget.rs      re-search budget per media item
 src/api.rs         the client traits, so the cycle and executor run on fakes
@@ -222,6 +223,8 @@ the next one starts.
     running for missing-item search only. Drain the backlog under the per-cycle
     cap.
 12. **Bookstore instance (dry-run, deployed 2026-10-29)**, qBit-only: `fake`, `free_space`, `recover`.
+13. **Rule (done):** `disc`. The first dry-run surfaced a Blu-ray disc that a
+    release title had disguised; whole discs are unwanted.
 
 ## 7. Decisions (2026-10-29)
 

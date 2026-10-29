@@ -2,6 +2,7 @@
 //! cycle's snapshot and observations and says what it would remove and why.
 //! Whether that happens, and how, is the planner's call.
 
+mod disc;
 mod duplicate;
 mod failed_import;
 mod fake;
@@ -37,6 +38,7 @@ pub enum Error {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Reason {
     Fake,
+    Disc,
     FailedImport,
     Metadata,
     Stalled,
@@ -47,6 +49,7 @@ impl Reason {
     pub fn as_str(self) -> &'static str {
         match self {
             Reason::Fake => "fake",
+            Reason::Disc => "disc",
             Reason::FailedImport => "failed_import",
             Reason::Metadata => "metadata",
             Reason::Stalled => "stalled",
@@ -84,6 +87,7 @@ pub struct RuleSet {
     config: config::Rules,
     media: GlobSet,
     executables: GlobSet,
+    disc: GlobSet,
     failed_import: RegexSet,
 }
 
@@ -92,6 +96,7 @@ impl RuleSet {
         Ok(RuleSet {
             media: globs("fake.media", &config.fake.media)?,
             executables: globs("fake.executables", &config.fake.executables)?,
+            disc: globs("disc.patterns", &config.disc.patterns)?,
             failed_import: RegexSet::new(&config.failed_import.patterns)?,
             config: config.clone(),
         })
@@ -102,6 +107,9 @@ impl RuleSet {
         let mut removals = Vec::new();
         if rules.fake.enabled {
             removals.extend(fake::evaluate(snapshot, &self.media, &self.executables));
+        }
+        if rules.disc.enabled {
+            removals.extend(disc::evaluate(snapshot, &self.disc));
         }
         if rules.stalled.enabled {
             removals.extend(stalled::evaluate(snapshot, observations, &rules.stalled));
@@ -180,6 +188,7 @@ mod tests {
     fn a_disabled_rule_removes_nothing() {
         let mut rules = config::Rules::default();
         rules.fake.enabled = false;
+        rules.disc.enabled = false;
         rules.stalled.enabled = false;
         rules.failed_import.enabled = false;
         rules.duplicate.enabled = false;

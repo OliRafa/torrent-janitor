@@ -27,6 +27,10 @@ enabled = true
 # media = ["*.mkv", "*.mp4", ...]      a torrent with none of these...
 # executables = ["*.exe", "*.bat", ...] ...and one of these is fake
 
+[rules.disc]                   # a whole disc instead of video files
+enabled = true
+# patterns = ["BDMV", "VIDEO_TS", "*.iso", "*.img"]   any path component
+
 [rules.stalled]                # counts only observed time stalled, never queued time
 enabled = true
 metadata_after = "30m"

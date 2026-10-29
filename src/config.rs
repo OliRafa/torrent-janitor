@@ -80,6 +80,9 @@ pub const DEFAULT_MEDIA: &[&str] = &[
     "*.mpg", "*.mpeg", "*.vob", "*.iso",
 ];
 
+/// Matched against each path component, like the executables.
+pub const DEFAULT_DISC: &[&str] = &["BDMV", "VIDEO_TS", "*.iso", "*.img"];
+
 pub const DEFAULT_FAILED_IMPORT: &[&str] = &[
     "^Not an upgrade for existing",
     "^Not a Custom Format upgrade for existing",
@@ -150,6 +153,7 @@ impl ArrConfig {
 #[serde(deny_unknown_fields, default)]
 pub struct Rules {
     pub fake: FakeRule,
+    pub disc: DiscRule,
     pub stalled: StalledRule,
     pub duplicate: DuplicateRule,
     pub failed_import: FailedImportRule,
@@ -173,6 +177,22 @@ impl Default for FakeRule {
             enabled: true,
             media: owned(DEFAULT_MEDIA),
             executables: owned(DEFAULT_EXECUTABLES),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct DiscRule {
+    pub enabled: bool,
+    pub patterns: Vec<String>,
+}
+
+impl Default for DiscRule {
+    fn default() -> Self {
+        DiscRule {
+            enabled: true,
+            patterns: owned(DEFAULT_DISC),
         }
     }
 }
