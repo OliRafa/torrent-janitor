@@ -123,7 +123,8 @@ impl RuleSet {
         }
         if rules.duplicate.enabled {
             let taken: HashSet<&str> = removals.iter().map(|r| r.hash.as_str()).collect();
-            let duplicates = duplicate::evaluate(snapshot, rules.duplicate.keep, &taken);
+            let duplicates =
+                duplicate::evaluate(snapshot, observations, rules.duplicate.keep, &taken);
             removals.extend(duplicates);
         }
         removals

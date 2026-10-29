@@ -54,14 +54,19 @@ and needs a maintainer; qBitrr has the same `added_on` bug.
 | `stalled` | State is `metaDL` or `stalledDL` (not queued, stopped, checking or forced-off) with no increase in `downloaded` for `stall_after` of observed active time. Separate thresholds for metaDL and stalledDL. | Remove via the arr | yes | budgeted |
 | `duplicate` | One episode or movie has more than `keep` (default 2) distinct `downloadId`s in the arr queue | Keep the best `keep` (below), remove the rest | no | no (`skipRedownload`) |
 | `failed_import` | `trackedDownloadState` is `importPending`/`importBlocked` and a status message matches a configured regex | Remove via the arr | yes | configurable |
-| `free_space` | Free space drops below `low`. It comes from `file`, btrfs-local-csi's per-volume JSON, when set. qBit's `server_state.free_space_on_disk` ignores btrfs quotas unless an LD_PRELOAD shim fences it, and a static qbittorrent-nox build (linuxserver's since 5.2.0) cannot load one | `stop` every running download and tag it `janitor:space`. From `high` up, `start` tagged ones again oldest first, as many as fit above `low` next to what is still running (hysteresis) | none | none |
+| `free_space` | Free space drops below `low`. It comes from `file`, btrfs-local-csi's per-volume JSON, when set. qBit's `server_state.free_space_on_disk` ignores btrfs quotas unless an LD_PRELOAD shim fences it, and a static qbittorrent-nox build (linuxserver's since 5.2.0) cannot load one | `stop` every running download and tag it `janitor:space`, except magnets still fetching metadata: they have nothing to write, and stopped they could never time out. From `high` up, `start` tagged ones again oldest first, as many as fit above `low` next to what is still running (hysteresis) | none | none |
 | `recover` | Torrent in `error` while free space is above `high` | `start`, at most N attempts per hash, sharing the headroom with `free_space` | none | none |
 | `orphan` | qBit torrent in an arr category, incomplete, absent from the arr queue for 15 minutes | Report only (metric and log) in v1 | none | none |
 
 **Duplicate ranking:**
 1. Completed or importing wins.
 2. Otherwise prefer a download that is progressing, ranked by quality (the arr
-   reports it) and then custom-format score.
+   reports it) and then custom-format score. Progressing means bytes arrived in
+   the last 15 minutes, not qBit's state of the moment: a live download that
+   stalls for a minute would otherwise lose its rank to a dead one, and the
+   first dry-run showed decisions flipping that way. An unfinished download
+   the janitor hasn't watched for 15 minutes, after a restart too, isn't
+   ranked yet.
 3. Otherwise take the highest progress.
 
 The top `keep` downloads stay, not just the best one: two run side by side, so a

@@ -12,6 +12,8 @@ pub struct Observation {
     pub first_seen: i64,
     pub last_seen: i64,
     pub downloaded: u64,
+    /// When bytes were last seen arriving, `None` until they first are.
+    pub progressed_at: Option<i64>,
     /// Seconds observed stalled since the last byte arrived.
     pub stalled_for: u64,
     pub recover_attempts: u32,
@@ -43,6 +45,7 @@ impl Observations {
                     first_seen: now,
                     last_seen: now,
                     downloaded: torrent.downloaded,
+                    progressed_at: None,
                     stalled_for: 0,
                     recover_attempts: 0,
                     was_stalled: stalled,
@@ -52,6 +55,7 @@ impl Observations {
                         .unwrap_or(0)
                         .min(self.max_gap);
                     if torrent.downloaded > o.downloaded {
+                        o.progressed_at = Some(now);
                         o.stalled_for = 0;
                         o.recover_attempts = 0;
                     } else if stalled && o.was_stalled {
@@ -116,6 +120,18 @@ mod tests {
         stalled.downloaded += 1;
         run(&mut observations, now, 1, &stalled);
         assert_eq!(observations.get("a").unwrap().stalled_for, 0);
+    }
+
+    #[test]
+    fn arriving_bytes_are_timestamped() {
+        let mut observations = Observations::new(120);
+        let mut running = torrent("a", State::Downloading, "tv");
+        observations.observe(0, std::slice::from_ref(&running));
+        assert_eq!(observations.get("a").unwrap().progressed_at, None);
+        running.downloaded += 1;
+        observations.observe(60, std::slice::from_ref(&running));
+        observations.observe(120, std::slice::from_ref(&running));
+        assert_eq!(observations.get("a").unwrap().progressed_at, Some(60));
     }
 
     #[test]

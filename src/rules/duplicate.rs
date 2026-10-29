@@ -7,23 +7,39 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use super::{Reason, Removal};
-use crate::qbit::{State, Torrent};
+use crate::observe::{Observation, Observations};
+use crate::qbit::Torrent;
 use crate::snapshot::{Download, Snapshot};
 
-type Candidate<'a> = (&'a Download, &'a Torrent);
+/// How recently bytes must have arrived for an unfinished download to count
+/// as running. A live download pauses now and then; a dead one gets nothing.
+const PROGRESS_WINDOW: i64 = 15 * 60;
+
+type Candidate<'a> = (&'a Download, &'a Torrent, Tier);
 
 /// `taken` holds downloads another rule already removes this cycle; they
-/// must not count as better than the ones that stay.
-pub(super) fn evaluate(snapshot: &Snapshot, keep: usize, taken: &HashSet<&str>) -> Vec<Removal> {
+/// must not count as better than the ones that stay. An unfinished download
+/// watched for less than `PROGRESS_WINDOW` sits out, after a restart too:
+/// until then a paused one and a dead one look the same.
+pub(super) fn evaluate(
+    snapshot: &Snapshot,
+    observations: &Observations,
+    keep: usize,
+    taken: &HashSet<&str>,
+) -> Vec<Removal> {
     let candidates: Vec<Candidate> = snapshot
         .downloads
         .iter()
         .filter(|d| !d.items.is_empty() && !taken.contains(d.hash.as_str()))
-        .filter_map(|d| Some((d, snapshot.torrent(&d.hash)?)))
+        .filter_map(|d| {
+            let torrent = snapshot.torrent(&d.hash)?;
+            let tier = tier(torrent, observations.get(&d.hash), snapshot.now)?;
+            Some((d, torrent, tier))
+        })
         .collect();
 
     let mut ranked: BTreeMap<(usize, i64), Vec<usize>> = BTreeMap::new();
-    for (i, (download, _)) in candidates.iter().enumerate() {
+    for (i, (download, _, _)) in candidates.iter().enumerate() {
         for item in &download.items {
             ranked.entry((download.arr, *item)).or_default().push(i);
         }
@@ -43,7 +59,7 @@ pub(super) fn evaluate(snapshot: &Snapshot, keep: usize, taken: &HashSet<&str>) 
         .iter()
         .zip(&kept)
         .filter(|(_, kept)| !**kept)
-        .map(|((download, _), _)| {
+        .map(|((download, _, _), _)| {
             let winners: BTreeSet<&str> = download
                 .items
                 .iter()
@@ -65,38 +81,44 @@ pub(super) fn evaluate(snapshot: &Snapshot, keep: usize, taken: &HashSet<&str>) 
         .collect()
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Tier {
     Stuck,
     Progressing,
     Complete,
 }
 
-fn tier(torrent: &Torrent) -> Tier {
+/// Running means bytes arrived within the window, whatever qBit's state
+/// says this minute. `None` while it is too early to tell.
+fn tier(torrent: &Torrent, observation: Option<&Observation>, now: i64) -> Option<Tier> {
     if torrent.is_complete() {
-        Tier::Complete
-    } else if matches!(torrent.state, State::Downloading | State::ForcedDL) {
+        return Some(Tier::Complete);
+    }
+    let observation = observation.filter(|o| now - o.first_seen >= PROGRESS_WINDOW)?;
+    let running = observation
+        .progressed_at
+        .is_some_and(|at| now - at < PROGRESS_WINDOW);
+    Some(if running {
         Tier::Progressing
     } else {
         Tier::Stuck
-    }
+    })
 }
 
 /// `Greater` when `a` is the better download. Finished beats running beats
 /// stuck. Running downloads are ranked by quality, stuck ones by how close
 /// they are to done. A tie goes to the earlier grab.
-fn compare((a, ta): Candidate, (b, tb): Candidate) -> Ordering {
+fn compare((a, ta, tier_a): Candidate, (b, tb, tier_b): Candidate) -> Ordering {
     let quality =
         (a.quality_rank, a.custom_format_score).cmp(&(b.quality_rank, b.custom_format_score));
     let progress = ta.progress.total_cmp(&tb.progress);
-    let tier_a = tier(ta);
     let within = if tier_a == Tier::Stuck {
         progress.then(quality)
     } else {
         quality.then(progress)
     };
     tier_a
-        .cmp(&tier(tb))
+        .cmp(&tier_b)
         .then(within)
         .then_with(|| tb.added_on.cmp(&ta.added_on))
         .then_with(|| b.hash.cmp(&a.hash))
@@ -105,6 +127,7 @@ fn compare((a, ta): Candidate, (b, tb): Candidate) -> Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::qbit::State;
     use crate::testkit::{download, torrent};
 
     struct Grab {
@@ -146,8 +169,28 @@ mod tests {
         snapshot
     }
 
+    /// Watches `snapshot` for one window in which only `alive` torrents get bytes.
+    fn watch(snapshot: &mut Snapshot, alive: impl Fn(&Torrent) -> bool) -> Observations {
+        let mut observations = Observations::new(120);
+        observations.observe(0, &snapshot.torrents);
+        for t in &mut snapshot.torrents {
+            if alive(t) {
+                t.downloaded += 1;
+            }
+        }
+        snapshot.now = PROGRESS_WINDOW;
+        observations.observe(snapshot.now, &snapshot.torrents);
+        observations
+    }
+
+    /// Judges after a window in which whatever qBit calls downloading got bytes.
+    fn judge(mut snapshot: Snapshot, keep: usize, taken: &HashSet<&str>) -> Vec<Removal> {
+        let observations = watch(&mut snapshot, |t| t.state == State::Downloading);
+        evaluate(&snapshot, &observations, keep, taken)
+    }
+
     fn removed(grabs: &[Grab], keep: usize) -> Vec<String> {
-        let mut hashes: Vec<String> = evaluate(&snapshot(grabs), keep, &HashSet::new())
+        let mut hashes: Vec<String> = judge(snapshot(grabs), keep, &HashSet::new())
             .into_iter()
             .map(|r| r.hash)
             .collect();
@@ -196,7 +239,7 @@ mod tests {
             grab("b", State::Downloading, 0.1, 5, &[101]),
         ]);
         snapshot.downloads[1].custom_format_score = 100;
-        let removals = evaluate(&snapshot, 1, &HashSet::new());
+        let removals = judge(snapshot, 1, &HashSet::new());
         assert_eq!(removals[0].hash, "a");
     }
 
@@ -208,6 +251,33 @@ mod tests {
             grab("c", State::StalledDL, 0.7, 1, &[101]),
         ];
         assert_eq!(removed(&grabs, 2), ["b"]);
+    }
+
+    #[test]
+    fn a_running_download_that_pauses_keeps_its_rank() {
+        let mut snapshot = snapshot(&[
+            grab("paused", State::StalledDL, 0.1, 9, &[101]),
+            grab("dead", State::StalledDL, 0.6, 1, &[101]),
+            grab("running", State::Downloading, 0.3, 5, &[101]),
+        ]);
+        let observations = watch(&mut snapshot, |t| t.hash != "dead");
+        let removals = evaluate(&snapshot, &observations, 2, &HashSet::new());
+        assert_eq!(removals.len(), 1);
+        assert_eq!(removals[0].hash, "dead");
+    }
+
+    #[test]
+    fn nothing_unfinished_is_judged_before_a_whole_window_is_watched() {
+        let mut snapshot = snapshot(&[
+            grab("a", State::StalledDL, 0.1, 9, &[101]),
+            grab("b", State::Downloading, 0.5, 5, &[101]),
+            grab("c", State::Downloading, 0.2, 7, &[101]),
+        ]);
+        let mut observations = Observations::new(120);
+        observations.observe(0, &snapshot.torrents);
+        snapshot.now = PROGRESS_WINDOW - 60;
+        observations.observe(snapshot.now, &snapshot.torrents);
+        assert!(evaluate(&snapshot, &observations, 2, &HashSet::new()).is_empty());
     }
 
     #[test]
@@ -229,7 +299,7 @@ mod tests {
             grab("e2a", State::Downloading, 0.5, 5, &[102]),
             grab("e2b", State::Downloading, 0.5, 5, &[102]),
         ];
-        let removals = evaluate(&snapshot(&grabs), 2, &HashSet::new());
+        let removals = judge(snapshot(&grabs), 2, &HashSet::new());
         assert_eq!(removals.len(), 1);
         assert_eq!(removals[0].hash, "pack");
         assert!(!removals[0].blocklist && !removals[0].research);
@@ -246,7 +316,7 @@ mod tests {
             grab("b", State::Downloading, 0.5, 5, &[101]),
         ]);
         snapshot.downloads[1].arr = 1;
-        assert!(evaluate(&snapshot, 1, &HashSet::new()).is_empty());
+        assert!(judge(snapshot, 1, &HashSet::new()).is_empty());
     }
 
     #[test]
@@ -257,7 +327,7 @@ mod tests {
             grab("b", State::Downloading, 0.4, 5, &[101]),
         ];
         let taken = HashSet::from(["junk"]);
-        assert!(evaluate(&snapshot(&grabs), 2, &taken).is_empty());
+        assert!(judge(snapshot(&grabs), 2, &taken).is_empty());
     }
 
     #[test]

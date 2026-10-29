@@ -3,6 +3,9 @@
 //! a restart. From `high` up, tagged downloads and errored ones start again,
 //! oldest first, as many as fit above `low` next to what is still running.
 //! A full disk leaves torrents in error, and qBit's `start` clears it.
+//! Magnets still fetching metadata keep running: they have nothing to write
+//! yet, and a stopped one can never be timed out by the stalled rule. Once
+//! the metadata lands they are downloads like any other.
 
 use super::Upkeep;
 use crate::config::{FreeSpaceRule, RecoverRule};
@@ -26,7 +29,7 @@ pub(super) fn evaluate(
         upkeep.stop = snapshot
             .torrents
             .iter()
-            .filter(|t| t.state.is_downloading())
+            .filter(|t| t.state.is_downloading() && !t.state.is_metadata())
             .map(|t| t.hash.clone())
             .collect();
         return upkeep;
@@ -102,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn below_the_low_mark_every_running_download_stops() {
+    fn below_the_low_mark_every_running_download_but_magnets_stops() {
         let mut done = t("done", State::StalledUP, 0, 0);
         done.progress = 1.0;
         let upkeep = evaluate_with(
@@ -117,7 +120,7 @@ mod tests {
             ],
             10,
         );
-        assert_eq!(upkeep.stop, ["dl", "meta", "stalled"]);
+        assert_eq!(upkeep.stop, ["dl", "stalled"]);
         assert!(upkeep.start.is_empty() && upkeep.recover.is_empty());
     }
 
