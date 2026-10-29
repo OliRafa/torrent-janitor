@@ -1,0 +1,54 @@
+name: Continuous Delivery
+
+# Runs after CI rather than alongside it, so an image only ever exists for a
+# commit that passed.
+on:
+  workflow_run:
+    workflows: [Continuous Integration]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  publish:
+    # A pull request from a branch named main also matches the filter above.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # github.sha here is wherever main points now, which may already be a
+      # newer commit than the one CI just tested.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Image names must be lowercase; the owner is not.
+      - id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "commit=${COMMIT::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.name }}:main
+            ${{ steps.image.outputs.name }}:sha-${{ steps.image.outputs.commit }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}

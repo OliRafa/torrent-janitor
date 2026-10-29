@@ -53,9 +53,9 @@ and needs a maintainer; qBitrr has the same `added_on` bug.
 | `stalled` | State is `metaDL` or `stalledDL` (not queued, stopped, checking or forced-off) with no increase in `downloaded` for `stall_after` of observed active time. Separate thresholds for metaDL and stalledDL. | Remove via the arr | yes | budgeted |
 | `duplicate` | One episode or movie has more than `keep` (default 2) distinct `downloadId`s in the arr queue | Keep the best `keep` (below), remove the rest | no | no (`skipRedownload`) |
 | `failed_import` | `trackedDownloadState` is `importPending`/`importBlocked` and a status message matches a configured regex | Remove via the arr | yes | configurable |
-| `free_space` | qBit `server_state.free_space_on_disk` (already quota-aware through the qgroup-fence shim) drops below `low` | `stop` the newest downloading torrents and tag them `janitor:space`; `start` them again above `high` (hysteresis) | none | none |
-| `recover` | Torrent in `error` while free space is above `high` | `start`, at most N attempts per hash | none | none |
-| `orphan` | qBit torrent in an arr category, incomplete, absent from the arr queue | Report only (metric and log) in v1 | none | none |
+| `free_space` | qBit `server_state.free_space_on_disk` (already quota-aware through the qgroup-fence shim) drops below `low` | `stop` every running download and tag it `janitor:space`. From `high` up, `start` tagged ones again oldest first, as many as fit above `low` next to what is still running (hysteresis) | none | none |
+| `recover` | Torrent in `error` while free space is above `high` | `start`, at most N attempts per hash, sharing the headroom with `free_space` | none | none |
+| `orphan` | qBit torrent in an arr category, incomplete, absent from the arr queue for 15 minutes | Report only (metric and log) in v1 | none | none |
 
 **Duplicate ranking:**
 1. Completed or importing wins.
@@ -95,9 +95,11 @@ src/snapshot.rs    one consistent view: torrents ⋈ queue records by hash
 src/observe.rs     per-hash memory: last state, last downloaded bytes,
                    accumulated active-no-progress time, first seen
 src/rules/         fake, stalled, duplicate, failed_import, free_space, recover, orphan
-src/plan.rs        Action enum; merge per downloadId; apply caps and budget
+src/plan.rs        one removal per download; routing, cap and budget; upkeep
 src/budget.rs      re-search budget per media item
-src/executor.rs    dry-run vs live; clients behind traits so tests use fakes
+src/api.rs         the client traits, so the cycle and executor run on fakes
+src/executor.rs    dry-run vs live; every decision logged once
+src/janitor.rs     one cycle: fetch, snapshot, rules, plan, execute, metrics
 src/http.rs        axum: /healthz, /metrics
 src/metrics.rs     prometheus-client registry
 ```
@@ -193,19 +195,19 @@ Each phase is at most about 5 files, ends with CI green, and is reviewed before
 the next one starts.
 
 0. **Skeleton (done):** PLAN.md, CLAUDE.md, README.md, .gitignore. Repo public.
-1. **Toolchain:**
+1. **Toolchain (done):**
    - Cargo.toml and `rust-toolchain.toml` (pinned stable)
    - `src/main.rs` stub
    - `scripts/ci.sh`, hooks, the CI workflow
-2. **qBit client:** version gate, info, files, maindata, delete, stop/start, tags.
+2. **qBit client (done):** version gate, info, files, maindata, delete, stop/start, tags.
    Fixtures captured. Wire tests.
-3. **arr client:** paged queue, queue delete, with season-pack fixtures.
-4. **Config, snapshot, observations,** including the clock tests above.
-5. **Rules:** `fake`, `stalled`, `failed_import`.
-6. **Rules:** `duplicate` and the budget.
-7. **Plan, executor, metrics, health, tick loop.** Dry-run end to end.
-8. **Rules:** `free_space`, `recover`, `orphan`.
-9. **Packaging:**
+3. **arr client (done):** paged queue, queue delete, with season-pack fixtures.
+4. **Config, snapshot, observations (done),** including the clock tests above.
+5. **Rules (done):** `fake`, `stalled`, `failed_import`.
+6. **Rules (done):** `duplicate` and the budget.
+7. **Plan, executor, metrics, health, tick loop (done).** Dry-run end to end.
+8. **Rules (done):** `free_space`, `recover`, `orphan`.
+9. **Packaging (done):**
    - Dockerfile (musl static → distroless)
    - CD to `ghcr.io/olirafa/torrent-janitor` with `main` and `sha-…` tags
      (Renovate pins `tag@digest`)
@@ -236,6 +238,8 @@ the next one starts.
 6. **Bookstore:** qBit-only rules (`fake`, `free_space`, `recover`). No stalled
    removal until there's a Kapowarr integration, because removal there can't
    blocklist.
-7. **Error recovery:** whether qBit 5 `start` clears an ENOSPC `error` state is
-   still *unverified*. Check in phase 8 against a test torrent before relying on
-   it.
+7. **Error recovery:** settled from the qBittorrent source in phase 8.
+   `TorrentImpl::start()` calls `clear_error()` and unsets `upload_mode`, the
+   two things qBit's Error state is made of (`hasError()`), so `torrents/start`
+   resumes a torrent a full disk errored. Watch the first live recoveries
+   anyway.
