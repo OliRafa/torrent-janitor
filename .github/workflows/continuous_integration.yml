@@ -1,0 +1,22 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # rustup on the runner installs the toolchain pinned in
+      # rust-toolchain.toml on the first cargo call.
+      - uses: Swatinem/rust-cache@v2
+
+      # The same script the git hooks run, so a green build here means a green
+      # build locally and the other way round.
+      - name: Run CI
+        run: ./scripts/ci.sh

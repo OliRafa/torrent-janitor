@@ -1,0 +1,9 @@
+[package]
+name = "torrent-janitor"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Keeps qBittorrent queues healthy for Sonarr and Radarr"
+publish = false
+
+[dependencies]
