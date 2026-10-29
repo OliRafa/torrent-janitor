@@ -108,8 +108,7 @@ pub fn plan(config: &Config, snapshot: &Snapshot, budget: &Budget, removals: Vec
     ordered.sort_by(|a, b| (a.reason, &a.hash).cmp(&(b.reason, &b.hash)));
 
     let mut plan = Plan::default();
-    // One re-search covers an item however many of its downloads go.
-    let mut researched: HashSet<(usize, i64)> = HashSet::new();
+    let mut routed = Vec::new();
     for removal in ordered {
         let Some(torrent) = snapshot.torrent(&removal.hash) else {
             continue;
@@ -126,20 +125,35 @@ pub fn plan(config: &Config, snapshot: &Snapshot, budget: &Budget, removals: Vec
                 continue;
             }
         };
-        if !config.dry_run && plan.removals.len() >= config.max_removals_per_cycle {
+        if !config.dry_run && routed.len() >= config.max_removals_per_cycle {
             plan.held.push((removal.reason, Hold::Cap));
             continue;
         }
+        routed.push((removal, route, torrent));
+    }
+
+    // An item is searched for again only when its last download goes. While
+    // another one is still in the arr's queue, held back by the cap included,
+    // the item is covered and a search would only grab one more. One search
+    // covers an item however many of its downloads go.
+    let leaving: HashSet<&str> = routed.iter().map(|(r, ..)| r.hash.as_str()).collect();
+    let mut covered: HashSet<(usize, i64)> = snapshot
+        .downloads
+        .iter()
+        .filter(|d| !leaving.contains(d.hash.as_str()))
+        .flat_map(|d| d.items.iter().map(|item| (d.arr, *item)))
+        .collect();
+    for (removal, route, torrent) in routed {
         let (blocklist, research, over_budget) = match &route {
             Route::Arr { arr, items, .. } if removal.research => {
                 let fresh: Vec<i64> = items
                     .iter()
                     .copied()
-                    .filter(|item| !researched.contains(&(*arr, *item)))
+                    .filter(|item| !covered.contains(&(*arr, *item)))
                     .collect();
                 let allowed = !fresh.is_empty() && budget.allows(snapshot.now, *arr, &fresh);
                 if allowed {
-                    researched.extend(fresh.iter().map(|item| (*arr, *item)));
+                    covered.extend(fresh.iter().map(|item| (*arr, *item)));
                 }
                 (removal.blocklist, allowed, !allowed && !fresh.is_empty())
             }
@@ -315,6 +329,34 @@ mod tests {
         assert!(plan.removals[0].research);
         assert!(!plan.removals[1].research);
         assert!(!plan.removals[1].over_budget);
+    }
+
+    #[test]
+    fn an_item_another_download_still_covers_is_not_searched_for() {
+        let plan = plan(
+            &config(),
+            &snapshot(&["a", "b"]),
+            &Budget::new(2),
+            vec![removal("a", Reason::Metadata)],
+        );
+        let planned = &plan.removals[0];
+        assert!(planned.blocklist);
+        assert!(!planned.research && !planned.over_budget);
+    }
+
+    #[test]
+    fn a_download_held_by_the_cap_still_covers_its_item() {
+        let mut config = config();
+        config.dry_run = false;
+        config.max_removals_per_cycle = 1;
+        let plan = plan(
+            &config,
+            &snapshot(&["a", "b"]),
+            &Budget::new(2),
+            vec![removal("a", Reason::Fake), removal("b", Reason::Stalled)],
+        );
+        assert_eq!(plan.removals.len(), 1);
+        assert!(!plan.removals[0].research);
     }
 
     #[test]

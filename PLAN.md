@@ -83,7 +83,10 @@ for one episode.
 **Re-search budget:** each episode or movie gets at most `max_researches_per_day`
 re-searches (default 2). Beyond that, removal still blocklists but sends
 `skipRedownload=true`, and the budget exhaustion shows up in a metric. This is
-the guard against another 66-grab loop.
+the guard against another 66-grab loop. An item is searched for only when its
+last download in the arr queue goes, cap-held ones counting as still there:
+the first dry-run had 22 of 23 re-searches aimed at episodes with 3 to 16
+other downloads queued, and each search can grab one more.
 
 **Actions are merged per download:** season packs appear as one queue record per
 episode, so actions are grouped by `downloadId` and send one DELETE each.
