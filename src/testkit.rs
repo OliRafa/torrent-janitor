@@ -114,9 +114,19 @@ pub struct FakeQbit {
     pub down: Cell<bool>,
     pub file_fetches: Cell<u32>,
     pub deleted: RefCell<Vec<String>>,
+    pub stopped: RefCell<Vec<String>>,
+    pub started: RefCell<Vec<String>>,
 }
 
 impl FakeQbit {
+    fn each(&self, hashes: &[String], mut change: impl FnMut(&mut Torrent)) {
+        for torrent in self.torrents.borrow_mut().iter_mut() {
+            if hashes.contains(&torrent.hash) {
+                change(torrent);
+            }
+        }
+    }
+
     fn check(&self, path: &'static str) -> Result<(), qbit::Error> {
         if self.down.get() {
             return Err(qbit::Error::Status {
@@ -149,6 +159,48 @@ impl Qbit for FakeQbit {
         self.torrents
             .borrow_mut()
             .retain(|t| !hashes.contains(&t.hash));
+        Ok(())
+    }
+
+    async fn stop(&self, hashes: &[String]) -> Result<(), qbit::Error> {
+        self.check("/api/v2/torrents/stop")?;
+        self.stopped.borrow_mut().extend(hashes.iter().cloned());
+        self.each(hashes, |t| t.state = State::StoppedDL);
+        Ok(())
+    }
+
+    async fn start(&self, hashes: &[String]) -> Result<(), qbit::Error> {
+        self.check("/api/v2/torrents/start")?;
+        self.started.borrow_mut().extend(hashes.iter().cloned());
+        self.each(hashes, |t| t.state = State::Downloading);
+        Ok(())
+    }
+
+    async fn add_tag(&self, hashes: &[String], tag: &str) -> Result<(), qbit::Error> {
+        self.check("/api/v2/torrents/addTags")?;
+        self.each(hashes, |t| {
+            if !t.has_tag(tag) {
+                t.tags = if t.tags.is_empty() {
+                    tag.to_owned()
+                } else {
+                    format!("{}, {tag}", t.tags)
+                };
+            }
+        });
+        Ok(())
+    }
+
+    async fn remove_tag(&self, hashes: &[String], tag: &str) -> Result<(), qbit::Error> {
+        self.check("/api/v2/torrents/removeTags")?;
+        self.each(hashes, |t| {
+            t.tags = t
+                .tags
+                .split(',')
+                .map(str::trim)
+                .filter(|x| *x != tag)
+                .collect::<Vec<_>>()
+                .join(", ");
+        });
         Ok(())
     }
 }

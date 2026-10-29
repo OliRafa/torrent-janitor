@@ -7,8 +7,9 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
 
-use crate::executor::Executed;
+use crate::executor::{Decision, Executed};
 use crate::plan::Plan;
+use crate::rules::SPACE_TAG;
 use crate::snapshot::Snapshot;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, EncodeLabelSet)]
@@ -33,6 +34,12 @@ struct RemovalLabels {
     outcome: &'static str,
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct UpkeepLabels {
+    action: &'static str,
+    outcome: &'static str,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Metrics {
     cycles: Family<CycleLabels, Counter>,
@@ -43,6 +50,9 @@ pub struct Metrics {
     held: Family<HeldLabels, Gauge>,
     removals: Family<RemovalLabels, Counter>,
     over_budget: Counter,
+    upkeep: Family<UpkeepLabels, Counter>,
+    space_stopped: Gauge,
+    orphans: Gauge,
 }
 
 impl Metrics {
@@ -96,6 +106,22 @@ impl Metrics {
             "Removals that skipped the re-search because the item's budget was spent",
             metrics.over_budget.clone(),
         );
+        registry.register(
+            "upkeep",
+            "Stops for space, starts once space is back and restarts of errored torrents, \
+             each counted once per torrent and outcome",
+            metrics.upkeep.clone(),
+        );
+        registry.register(
+            "space_stopped_torrents",
+            "Torrents stopped for space and not yet started again",
+            metrics.space_stopped.clone(),
+        );
+        registry.register(
+            "orphans",
+            "Incomplete torrents in an arr category that its queue does not list",
+            metrics.orphans.clone(),
+        );
         (metrics, registry)
     }
 
@@ -130,14 +156,27 @@ impl Metrics {
             };
             self.held.get_or_create(&labels).inc();
         }
+        let tagged = snapshot.torrents.iter().filter(|t| t.has_tag(SPACE_TAG));
+        self.space_stopped.set(count(tagged.count()));
+        self.orphans.set(count(plan.orphans.len()));
         for e in executed.iter().filter(|e| e.new) {
-            let labels = RemovalLabels {
-                reason: e.reason.as_str(),
-                outcome: e.outcome.as_str(),
-            };
-            self.removals.get_or_create(&labels).inc();
-            if e.over_budget {
-                self.over_budget.inc();
+            let outcome = e.outcome.as_str();
+            match e.decision {
+                Decision::Remove(reason) => {
+                    let reason = reason.as_str();
+                    self.removals
+                        .get_or_create(&RemovalLabels { reason, outcome })
+                        .inc();
+                    if e.over_budget {
+                        self.over_budget.inc();
+                    }
+                }
+                decision => {
+                    let action = decision.action();
+                    self.upkeep
+                        .get_or_create(&UpkeepLabels { action, outcome })
+                        .inc();
+                }
             }
         }
     }
@@ -166,21 +205,24 @@ mod tests {
     fn a_waiting_decision_counts_once_and_held_ones_show_why() {
         let (metrics, registry) = Metrics::new(true);
         let plan = Plan {
-            removals: vec![],
             held: vec![(Reason::Duplicate, Hold::Cap)],
+            ..Plan::default()
         };
         let decision = |new| Executed {
-            reason: Reason::Stalled,
-            outcome: Outcome::WouldRemove,
+            hash: "a".into(),
+            decision: Decision::Remove(Reason::Stalled),
+            outcome: Outcome::DryRun,
             over_budget: false,
             new,
         };
         metrics.record(&Snapshot::default(), &plan, &[decision(true)]);
         metrics.record(&Snapshot::default(), &plan, &[decision(false)]);
         let text = text(&registry);
-        assert!(text.contains(
-            r#"torrent_janitor_removals_total{reason="stalled",outcome="would_remove"} 1"#
-        ));
+        assert!(
+            text.contains(
+                r#"torrent_janitor_removals_total{reason="stalled",outcome="dry_run"} 1"#
+            )
+        );
         assert!(text.contains(r#"torrent_janitor_held_removals{reason="duplicate",hold="cap"} 1"#));
         assert!(text.contains("torrent_janitor_dry_run 1"));
     }
@@ -189,12 +231,28 @@ mod tests {
     fn last_cycle_gauges_forget_reasons_that_are_gone() {
         let (metrics, registry) = Metrics::new(false);
         let held = Plan {
-            removals: vec![],
             held: vec![(Reason::Stalled, Hold::Untracked)],
+            ..Plan::default()
         };
         metrics.record(&Snapshot::default(), &held, &[]);
         metrics.record(&Snapshot::default(), &Plan::default(), &[]);
         assert!(!text(&registry).contains("hold=\"untracked\""));
+    }
+
+    #[test]
+    fn upkeep_counts_apart_from_removals() {
+        let (metrics, registry) = Metrics::new(false);
+        let stop = Executed {
+            hash: "a".into(),
+            decision: Decision::Stop,
+            outcome: Outcome::Done,
+            over_budget: false,
+            new: true,
+        };
+        metrics.record(&Snapshot::default(), &Plan::default(), &[stop]);
+        let text = text(&registry);
+        assert!(text.contains(r#"torrent_janitor_upkeep_total{action="stop",outcome="done"} 1"#));
+        assert!(!text.contains("torrent_janitor_removals_total{"));
     }
 
     #[test]

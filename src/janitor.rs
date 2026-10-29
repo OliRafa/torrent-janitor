@@ -9,7 +9,7 @@ use tracing::{info, warn};
 use crate::api::{Arr, Qbit};
 use crate::budget::Budget;
 use crate::config::Config;
-use crate::executor::Executor;
+use crate::executor::{Decision, Executor, Outcome};
 use crate::metrics::Metrics;
 use crate::observe::Observations;
 use crate::qbit::{File, Torrent};
@@ -102,11 +102,18 @@ impl<Q: Qbit, A: Arr> Janitor<Q, A> {
         );
         self.observations.observe(now, &snapshot.torrents);
         let removals = self.rules.removals(&snapshot, &self.observations);
-        let plan = plan::plan(&self.config, &snapshot, &self.budget, removals);
+        let upkeep = self.rules.upkeep(&snapshot, &self.observations);
+        let mut plan = plan::plan(&self.config, &snapshot, &self.budget, removals);
+        plan.add_upkeep(&snapshot, upkeep);
         let executed = self
             .executor
             .execute(&plan, now, &self.qbit, &self.arrs, &mut self.budget)
             .await;
+        for e in &executed {
+            if (e.decision, e.outcome) == (Decision::Recover, Outcome::Done) {
+                self.observations.note_recover_attempt(&e.hash);
+            }
+        }
         self.metrics.record(&snapshot, &plan, &executed);
         Ok(())
     }
@@ -231,6 +238,39 @@ mod tests {
         assert_eq!(sonarr(&j).profile_fetches.get(), 1);
         j.tick(PROFILE_TTL).await;
         assert_eq!(sonarr(&j).profile_fetches.get(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_full_disk_stops_downloads_until_space_is_back() {
+        let mut j = janitor(false, vec![torrent("ab", State::Downloading, "tv-sonarr")]);
+        sonarr(&j).records.borrow_mut().push(record(5, "AB", 101));
+        j.qbit.free_space.set(Some(1 << 30));
+        j.tick(0).await;
+        assert_eq!(*j.qbit.stopped.borrow(), ["ab"]);
+
+        j.qbit.free_space.set(Some(40 << 30));
+        j.tick(60).await;
+        assert!(
+            j.qbit.started.borrow().is_empty(),
+            "inside the hysteresis band"
+        );
+
+        j.qbit.free_space.set(Some(60 << 30));
+        j.tick(120).await;
+        assert_eq!(*j.qbit.started.borrow(), ["ab"]);
+        assert!(j.qbit.torrents.borrow()[0].tags.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_errored_torrent_gets_a_limited_number_of_restarts() {
+        let mut j = janitor(false, vec![torrent("ab", State::Error, "tv-sonarr")]);
+        sonarr(&j).records.borrow_mut().push(record(5, "AB", 101));
+        j.qbit.free_space.set(Some(60 << 30));
+        for minute in 0..10 {
+            j.qbit.torrents.borrow_mut()[0].state = State::Error;
+            j.tick(minute * 60).await;
+        }
+        assert_eq!(j.qbit.started.borrow().len(), 3);
     }
 
     #[tokio::test]

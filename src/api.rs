@@ -12,6 +12,18 @@ pub trait Qbit {
     fn files(&self, hash: &str) -> impl Future<Output = Result<Vec<File>, qbit::Error>>;
     /// Removes the torrents and their data.
     fn delete(&self, hashes: &[String]) -> impl Future<Output = Result<(), qbit::Error>>;
+    fn stop(&self, hashes: &[String]) -> impl Future<Output = Result<(), qbit::Error>>;
+    fn start(&self, hashes: &[String]) -> impl Future<Output = Result<(), qbit::Error>>;
+    fn add_tag(
+        &self,
+        hashes: &[String],
+        tag: &str,
+    ) -> impl Future<Output = Result<(), qbit::Error>>;
+    fn remove_tag(
+        &self,
+        hashes: &[String],
+        tag: &str,
+    ) -> impl Future<Output = Result<(), qbit::Error>>;
 }
 
 pub trait Arr {
@@ -38,6 +50,30 @@ impl Qbit for qbit::Client {
 
     fn delete(&self, hashes: &[String]) -> impl Future<Output = Result<(), qbit::Error>> {
         qbit::Client::delete(self, hashes, true)
+    }
+
+    fn stop(&self, hashes: &[String]) -> impl Future<Output = Result<(), qbit::Error>> {
+        qbit::Client::stop(self, hashes)
+    }
+
+    fn start(&self, hashes: &[String]) -> impl Future<Output = Result<(), qbit::Error>> {
+        qbit::Client::start(self, hashes)
+    }
+
+    fn add_tag(
+        &self,
+        hashes: &[String],
+        tag: &str,
+    ) -> impl Future<Output = Result<(), qbit::Error>> {
+        qbit::Client::add_tag(self, hashes, tag)
+    }
+
+    fn remove_tag(
+        &self,
+        hashes: &[String],
+        tag: &str,
+    ) -> impl Future<Output = Result<(), qbit::Error>> {
+        qbit::Client::remove_tag(self, hashes, tag)
     }
 }
 

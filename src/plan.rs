@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use crate::budget::Budget;
 use crate::config::Config;
-use crate::rules::{Reason, Removal};
+use crate::rules::{Reason, Removal, Upkeep};
 use crate::snapshot::Snapshot;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,10 +54,43 @@ impl Hold {
     }
 }
 
+/// A torrent an upkeep action touches, named for the log.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Named {
+    pub hash: String,
+    pub name: String,
+}
+
 #[derive(Debug, Default, PartialEq)]
 pub struct Plan {
     pub removals: Vec<Planned>,
     pub held: Vec<(Reason, Hold)>,
+    pub stop: Vec<Named>,
+    pub start: Vec<Named>,
+    pub recover: Vec<Named>,
+    pub orphans: Vec<Named>,
+}
+
+impl Plan {
+    /// Adds the upkeep, minus torrents this cycle removes: stopping or
+    /// starting a torrent on its way out only races the removal.
+    pub fn add_upkeep(&mut self, snapshot: &Snapshot, upkeep: Upkeep) {
+        let removed: HashSet<&str> = self.removals.iter().map(|r| r.hash.as_str()).collect();
+        let named = |hashes: Vec<String>| -> Vec<Named> {
+            hashes
+                .into_iter()
+                .filter(|hash| !removed.contains(hash.as_str()))
+                .filter_map(|hash| {
+                    let name = snapshot.torrent(&hash)?.name.clone();
+                    Some(Named { hash, name })
+                })
+                .collect()
+        };
+        self.stop = named(upkeep.stop);
+        self.start = named(upkeep.start);
+        self.recover = named(upkeep.recover);
+        self.orphans = named(upkeep.orphans);
+    }
 }
 
 pub fn plan(config: &Config, snapshot: &Snapshot, budget: &Budget, removals: Vec<Removal>) -> Plan {
@@ -266,6 +299,27 @@ mod tests {
         assert!(plan.removals[0].research);
         assert!(!plan.removals[1].research);
         assert!(!plan.removals[1].over_budget);
+    }
+
+    #[test]
+    fn upkeep_skips_torrents_this_cycle_removes() {
+        let snapshot = snapshot(&["a", "b"]);
+        let mut plan = plan(
+            &config(),
+            &snapshot,
+            &Budget::new(2),
+            vec![removal("a", Reason::Stalled)],
+        );
+        plan.add_upkeep(
+            &snapshot,
+            Upkeep {
+                stop: vec!["a".into(), "b".into()],
+                ..Upkeep::default()
+            },
+        );
+        let stopped: Vec<&str> = plan.stop.iter().map(|n| n.hash.as_str()).collect();
+        assert_eq!(stopped, ["b"]);
+        assert_eq!(plan.stop[0].name, "Example.b");
     }
 
     #[test]
