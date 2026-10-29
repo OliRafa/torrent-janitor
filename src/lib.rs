@@ -3,6 +3,9 @@ pub mod arr;
 pub mod budget;
 pub mod config;
 pub mod executor;
+pub mod http;
+pub mod janitor;
+pub mod metrics;
 pub mod observe;
 pub mod plan;
 pub mod qbit;
@@ -23,4 +26,11 @@ pub fn error_chain(error: &dyn std::error::Error) -> String {
         source = cause.source();
     }
     text
+}
+
+/// Unix time in seconds, the clock every cycle runs on.
+pub fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
