@@ -38,7 +38,8 @@ pub struct Planned {
 /// Why a removal the rules want does not happen this cycle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Hold {
-    /// Over `max_removals_per_cycle`; it comes up again next cycle.
+    /// Over `max_removals_per_cycle`; it comes up again next cycle. Live
+    /// only: dry-run plans every removal, so its log shows all of them.
     Cap,
     /// In an arr's category but not in its queue. Removing it behind the
     /// arr's back would blocklist nothing, so it is only reported.
@@ -125,7 +126,7 @@ pub fn plan(config: &Config, snapshot: &Snapshot, budget: &Budget, removals: Vec
                 continue;
             }
         };
-        if plan.removals.len() >= config.max_removals_per_cycle {
+        if !config.dry_run && plan.removals.len() >= config.max_removals_per_cycle {
             plan.held.push((removal.reason, Hold::Cap));
             continue;
         }
@@ -256,6 +257,7 @@ mod tests {
     #[test]
     fn removals_past_the_cap_wait_strongest_first() {
         let mut config = config();
+        config.dry_run = false;
         config.max_removals_per_cycle = 2;
         let plan = plan(
             &config,
@@ -270,6 +272,20 @@ mod tests {
         let reasons: Vec<Reason> = plan.removals.iter().map(|r| r.reason).collect();
         assert_eq!(reasons, [Reason::Fake, Reason::Stalled]);
         assert_eq!(plan.held, [(Reason::Duplicate, Hold::Cap)]);
+    }
+
+    #[test]
+    fn dry_run_plans_past_the_cap() {
+        let mut config = config();
+        config.max_removals_per_cycle = 1;
+        let plan = plan(
+            &config,
+            &snapshot(&["a", "b"]),
+            &Budget::new(2),
+            vec![removal("a", Reason::Stalled), removal("b", Reason::Stalled)],
+        );
+        assert_eq!(plan.removals.len(), 2);
+        assert!(plan.held.is_empty());
     }
 
     #[test]

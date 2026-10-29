@@ -3,7 +3,7 @@
 
 interval = "60s"
 dry_run = true                 # log and count decisions, change nothing
-max_removals_per_cycle = 10
+max_removals_per_cycle = 10     # live only; dry-run plans and logs every removal
 listen = "0.0.0.0:9090"        # /healthz and /metrics
 
 [qbit]

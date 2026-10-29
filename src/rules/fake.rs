@@ -1,8 +1,9 @@
 //! A release that brings no media but does bring an executable is a fake,
 //! like the lone `.exe` named after the episode it claimed to be. Files
 //! qBit's `ExcludedFileNames` skipped still show in the file list, so they
-//! are found here too. Deselected files alone prove nothing: genuine
-//! releases end up with every file deselected as well.
+//! are found here too. Media counts even when deselected: genuine releases
+//! end up with every file deselected, and a Blu-ray disc's BD-J menus are
+//! `.jar` files next to its `.m2ts` streams.
 
 use globset::GlobSet;
 
@@ -22,10 +23,7 @@ pub(super) fn evaluate(
                 .files
                 .get(&torrent.hash)
                 .filter(|f| !f.is_empty())?;
-            if files
-                .iter()
-                .any(|f| f.priority > 0 && media.is_match(basename(&f.name)))
-            {
+            if files.iter().any(|f| media.is_match(basename(&f.name))) {
                 return None;
             }
             let executable = files
@@ -84,12 +82,12 @@ mod tests {
     }
 
     #[test]
-    fn media_the_torrent_will_not_download_does_not_count() {
+    fn a_blu_ray_disc_with_its_menus_is_not_fake() {
         let found = removals(vec![
-            file("Example/Example.S01E01.mkv", 0),
-            file("Example/Player.exe", 1),
+            file("Example/BDMV/STREAM/00000.m2ts", 0),
+            file("Example/BDMV/JAR/00001.jar", 0),
         ]);
-        assert_eq!(found.len(), 1);
+        assert!(found.is_empty());
     }
 
     #[test]
