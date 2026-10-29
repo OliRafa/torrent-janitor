@@ -241,6 +241,10 @@ pub struct FreeSpaceRule {
     pub low: u64,
     #[serde(deserialize_with = "bytes")]
     pub high: u64,
+    /// A JSON file whose `avail_bytes` is the free space, as btrfs-local-csi
+    /// publishes it per volume. Without it qBittorrent's own figure is used,
+    /// which knows nothing of btrfs quotas.
+    pub file: Option<String>,
 }
 
 impl Default for FreeSpaceRule {
@@ -249,6 +253,7 @@ impl Default for FreeSpaceRule {
             enabled: true,
             low: 25 << 30,
             high: 50 << 30,
+            file: None,
         }
     }
 }

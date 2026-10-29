@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use serde::Deserialize;
 use tracing::{info, warn};
 
 use crate::api::{Arr, Qbit};
@@ -27,6 +28,12 @@ pub enum Error {
     Qbit(#[from] qbit::Error),
     #[error(transparent)]
     Arr(#[from] arr::Error),
+    #[error("cannot read free space from {path}")]
+    FreeSpace {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 pub struct Janitor<Q, A> {
@@ -82,6 +89,10 @@ impl<Q: Qbit, A: Arr> Janitor<Q, A> {
 
     async fn cycle(&mut self, now: i64) -> Result<(), Error> {
         let main = self.qbit.main_data().await?;
+        let free_space = match &self.config.rules.free_space.file {
+            Some(path) => Some(read_free_space(path)?),
+            None => main.free_space,
+        };
         let managed: Vec<Torrent> = main
             .torrents
             .into_iter()
@@ -96,7 +107,7 @@ impl<Q: Qbit, A: Arr> Janitor<Q, A> {
             &self.config,
             now,
             managed,
-            main.free_space,
+            free_space,
             self.files.clone(),
             &self.views,
         );
@@ -144,6 +155,22 @@ impl<Q: Qbit, A: Arr> Janitor<Q, A> {
         }
         Ok(())
     }
+}
+
+fn read_free_space(path: &str) -> Result<u64, Error> {
+    #[derive(Deserialize)]
+    struct Volume {
+        avail_bytes: u64,
+    }
+    let read = || -> std::io::Result<u64> {
+        let text = std::fs::read_to_string(path)?;
+        let volume: Volume = serde_json::from_str(&text).map_err(std::io::Error::other)?;
+        Ok(volume.avail_bytes)
+    };
+    read().map_err(|source| Error::FreeSpace {
+        path: path.to_owned(),
+        source,
+    })
 }
 
 #[cfg(test)]
@@ -259,6 +286,25 @@ mod tests {
         j.tick(120).await;
         assert_eq!(*j.qbit.started.borrow(), ["ab"]);
         assert!(j.qbit.torrents.borrow()[0].tags.is_empty());
+    }
+
+    #[tokio::test]
+    async fn free_space_comes_from_the_volume_file_when_one_is_set() {
+        let path = std::env::temp_dir().join(format!("tj-volume-{}.json", std::process::id()));
+        std::fs::write(
+            &path,
+            r#"{"quota_bytes":3285649981440,"avail_bytes":204800}"#,
+        )
+        .unwrap();
+        let mut j = janitor(false, vec![torrent("ab", State::Downloading, "tv-sonarr")]);
+        sonarr(&j).records.borrow_mut().push(record(5, "AB", 101));
+        j.config.rules.free_space.file = Some(path.to_string_lossy().into_owned());
+        j.qbit.free_space.set(Some(3 << 40));
+        j.tick(0).await;
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(*j.qbit.stopped.borrow(), ["ab"], "qBit's 3 TiB is the pool");
+
+        assert!(matches!(j.cycle(60).await, Err(Error::FreeSpace { .. })));
     }
 
     #[tokio::test]

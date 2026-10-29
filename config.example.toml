@@ -45,6 +45,8 @@ research = false
 enabled = true
 low = "25G"                    # stop downloads below this
 high = "50G"                   # start them again above this
+# file = "/run/qgroup-fence/library.json"  # read avail_bytes here instead of
+#                                          # asking qBit, which cannot see quotas
 
 [rules.recover]
 enabled = true
