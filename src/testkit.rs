@@ -1,10 +1,12 @@
 //! Builders shared by the unit tests.
 
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-use crate::arr::QueueRecord;
+use crate::api::{Arr, Qbit};
+use crate::arr::{self, Kind, QualityProfile, QueueRecord};
 use crate::config::Config;
-use crate::qbit::{File, State, Torrent};
+use crate::qbit::{self, File, MainData, State, Torrent};
 use crate::snapshot::{Download, Snapshot};
 
 pub fn config() -> Config {
@@ -100,5 +102,139 @@ pub fn troubled_snapshot() -> Snapshot {
             &["Not an upgrade for existing episode file(s)."],
         )],
         ..Snapshot::default()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct FakeQbit {
+    pub torrents: RefCell<Vec<Torrent>>,
+    pub free_space: Cell<Option<u64>>,
+    pub files: RefCell<HashMap<String, Vec<File>>>,
+    pub down: Cell<bool>,
+    pub file_fetches: Cell<u32>,
+    pub deleted: RefCell<Vec<String>>,
+}
+
+impl FakeQbit {
+    fn check(&self, path: &'static str) -> Result<(), qbit::Error> {
+        if self.down.get() {
+            return Err(qbit::Error::Status {
+                path,
+                status: reqwest::StatusCode::SERVICE_UNAVAILABLE,
+            });
+        }
+        Ok(())
+    }
+}
+
+impl Qbit for FakeQbit {
+    async fn main_data(&self) -> Result<MainData, qbit::Error> {
+        self.check("/api/v2/sync/maindata")?;
+        Ok(MainData {
+            torrents: self.torrents.borrow().clone(),
+            free_space: self.free_space.get(),
+        })
+    }
+
+    async fn files(&self, hash: &str) -> Result<Vec<File>, qbit::Error> {
+        self.check("/api/v2/torrents/files")?;
+        self.file_fetches.set(self.file_fetches.get() + 1);
+        Ok(self.files.borrow().get(hash).cloned().unwrap_or_default())
+    }
+
+    async fn delete(&self, hashes: &[String]) -> Result<(), qbit::Error> {
+        self.check("/api/v2/torrents/delete")?;
+        self.deleted.borrow_mut().extend(hashes.iter().cloned());
+        self.torrents
+            .borrow_mut()
+            .retain(|t| !hashes.contains(&t.hash));
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct FakeArr {
+    pub kind: Kind,
+    pub records: RefCell<Vec<QueueRecord>>,
+    pub profiles: Vec<QualityProfile>,
+    pub owners: HashMap<i64, i64>,
+    pub down: Cell<bool>,
+    pub profile_fetches: Cell<u32>,
+    /// `(queue id, blocklist, skip_redownload)` per delete.
+    pub deletes: RefCell<Vec<(i64, bool, bool)>>,
+}
+
+impl FakeArr {
+    pub fn new(kind: Kind) -> Self {
+        FakeArr {
+            kind,
+            records: RefCell::default(),
+            profiles: Vec::new(),
+            owners: HashMap::new(),
+            down: Cell::new(false),
+            profile_fetches: Cell::new(0),
+            deletes: RefCell::default(),
+        }
+    }
+
+    fn check(&self, path: &str) -> Result<(), arr::Error> {
+        if self.down.get() {
+            return Err(arr::Error::Status {
+                kind: self.kind,
+                path: path.to_owned(),
+                status: reqwest::StatusCode::SERVICE_UNAVAILABLE,
+            });
+        }
+        Ok(())
+    }
+}
+
+impl Arr for FakeArr {
+    fn kind(&self) -> Kind {
+        self.kind
+    }
+
+    async fn queue(&self) -> Result<Vec<QueueRecord>, arr::Error> {
+        self.check("/api/v3/queue")?;
+        Ok(self.records.borrow().clone())
+    }
+
+    async fn quality_profiles(&self) -> Result<Vec<QualityProfile>, arr::Error> {
+        self.check("/api/v3/qualityprofile")?;
+        self.profile_fetches.set(self.profile_fetches.get() + 1);
+        Ok(self.profiles.clone())
+    }
+
+    async fn profiles_by_owner(&self) -> Result<HashMap<i64, i64>, arr::Error> {
+        self.check("/api/v3/series")?;
+        Ok(self.owners.clone())
+    }
+
+    /// Like the real arr: one record id removes the whole download.
+    async fn delete_queue_item(
+        &self,
+        id: i64,
+        blocklist: bool,
+        skip_redownload: bool,
+    ) -> Result<(), arr::Error> {
+        let path = format!("/api/v3/queue/{id}");
+        self.check(&path)?;
+        let mut records = self.records.borrow_mut();
+        let Some(download) = records
+            .iter()
+            .find(|r| r.id == id)
+            .map(|r| r.download_id.clone())
+        else {
+            return Err(arr::Error::Status {
+                kind: self.kind,
+                path,
+                status: reqwest::StatusCode::NOT_FOUND,
+            });
+        };
+        records.retain(|r| r.download_id != download);
+        self.deletes
+            .borrow_mut()
+            .push((id, blocklist, skip_redownload));
+        Ok(())
     }
 }
