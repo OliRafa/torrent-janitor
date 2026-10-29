@@ -39,6 +39,23 @@ impl State {
         self.is_metadata() || self == State::StalledDL
     }
 
+    /// Wanting data: started, queued to start or fetching metadata. Upload
+    /// states never write, whatever `progress` says: a torrent with every
+    /// file deselected seeds at progress 0.
+    pub fn is_downloading(self) -> bool {
+        matches!(
+            self,
+            State::Downloading
+                | State::ForcedDL
+                | State::MetaDL
+                | State::ForcedMetaDL
+                | State::StalledDL
+                | State::QueuedDL
+                | State::Allocating
+                | State::CheckingDL
+        )
+    }
+
     pub fn is_stopped(self) -> bool {
         matches!(self, State::StoppedDL | State::StoppedUP)
     }

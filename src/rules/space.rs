@@ -1,5 +1,5 @@
-//! Free space, and the downloads it holds back. Below `low` every running
-//! download stops and is tagged, so the stop is recognisably ours even after
+//! Free space, and the downloads it holds back. Below `low` every download
+//! stops and is tagged, so the stop is recognisably ours even after
 //! a restart. From `high` up, tagged downloads and errored ones start again,
 //! oldest first, as many as fit above `low` next to what is still running.
 //! A full disk leaves torrents in error, and qBit's `start` clears it.
@@ -26,7 +26,7 @@ pub(super) fn evaluate(
         upkeep.stop = snapshot
             .torrents
             .iter()
-            .filter(|t| running(t))
+            .filter(|t| t.state.is_downloading())
             .map(|t| t.hash.clone())
             .collect();
         return upkeep;
@@ -38,7 +38,7 @@ pub(super) fn evaluate(
     let committed: u64 = snapshot
         .torrents
         .iter()
-        .filter(|t| running(t) && !t.has_tag(TAG))
+        .filter(|t| t.state.is_downloading() && !t.has_tag(TAG))
         .map(|t| t.amount_left)
         .sum();
     let mut headroom = free.saturating_sub(space.low).saturating_sub(committed);
@@ -66,13 +66,6 @@ pub(super) fn evaluate(
         }
     }
     upkeep
-}
-
-/// Started and still writing, or about to.
-fn running(torrent: &Torrent) -> bool {
-    !torrent.is_complete()
-        && !torrent.state.is_stopped()
-        && !matches!(torrent.state, State::Error | State::MissingFiles)
 }
 
 #[cfg(test)]
@@ -119,6 +112,7 @@ mod tests {
                 t("stalled", State::StalledDL, 0, 5),
                 t("stopped", State::StoppedDL, 0, 5),
                 t("error", State::Error, 0, 5),
+                t("deselected", State::StalledUP, 0, 0),
                 done,
             ],
             10,

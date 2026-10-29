@@ -1,7 +1,8 @@
 //! A release that brings no media but does bring an executable is a fake,
-//! like the lone `.exe` named after the episode it claimed to be. qBit's
-//! `ExcludedFileNames` already skips such files, so a fake often shows up
-//! as a torrent with nothing left to download.
+//! like the lone `.exe` named after the episode it claimed to be. Files
+//! qBit's `ExcludedFileNames` skipped still show in the file list, so they
+//! are found here too. Deselected files alone prove nothing: genuine
+//! releases end up with every file deselected as well.
 
 use globset::GlobSet;
 
@@ -29,18 +30,13 @@ pub(super) fn evaluate(
             }
             let executable = files
                 .iter()
-                .find(|f| f.name.split('/').any(|part| executables.is_match(part)));
-            let detail = match executable {
-                Some(file) => format!("no media file, executable {}", file.name),
-                None if files.iter().all(|f| f.priority == 0) => "every file is excluded".into(),
-                None => return None,
-            };
+                .find(|f| f.name.split('/').any(|part| executables.is_match(part)))?;
             Some(Removal {
                 hash: torrent.hash.clone(),
                 reason: Reason::Fake,
                 blocklist: true,
                 research: true,
-                detail,
+                detail: format!("no media file, executable {}", executable.name),
             })
         })
         .collect()
@@ -97,12 +93,15 @@ mod tests {
     }
 
     #[test]
-    fn a_torrent_with_every_file_excluded_is_fake() {
-        let found = removals(vec![
-            file("Example/readme.nfo", 0),
-            file("Example/x.dat", 0),
-        ]);
-        assert_eq!(found[0].detail, "every file is excluded");
+    fn a_genuine_release_with_every_file_deselected_is_not_fake() {
+        assert!(removals(vec![file("Example (2006).avi", 0)]).is_empty());
+        assert!(
+            removals(vec![
+                file("Example/readme.nfo", 0),
+                file("Example/x.dat", 0)
+            ])
+            .is_empty()
+        );
     }
 
     #[test]

@@ -49,7 +49,7 @@ and needs a maintainer; qBitrr has the same `added_on` bug.
 
 | Rule | Fires when | Action | Blocklist | Re-search |
 |---|---|---|---|---|
-| `fake` | Metadata is known, and no wanted file (priority > 0) has a media extension, while at least one file matches the executable list. A torrent whose files are all excluded counts too. | Remove via the arr | yes | budgeted |
+| `fake` | Metadata is known, and no wanted file (priority > 0) has a media extension, while at least one file matches the executable list. Deselected files alone are not enough: genuine releases end up with every file deselected too (seen in the first dry-run). | Remove via the arr | yes | budgeted |
 | `stalled` | State is `metaDL` or `stalledDL` (not queued, stopped, checking or forced-off) with no increase in `downloaded` for `stall_after` of observed active time. Separate thresholds for metaDL and stalledDL. | Remove via the arr | yes | budgeted |
 | `duplicate` | One episode or movie has more than `keep` (default 2) distinct `downloadId`s in the arr queue | Keep the best `keep` (below), remove the rest | no | no (`skipRedownload`) |
 | `failed_import` | `trackedDownloadState` is `importPending`/`importBlocked` and a status message matches a configured regex | Remove via the arr | yes | configurable |
