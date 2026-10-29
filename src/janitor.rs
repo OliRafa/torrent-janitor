@@ -45,6 +45,9 @@ pub struct Janitor<Q, A> {
     profiles_fetched: Vec<Option<i64>>,
     /// File lists do not change once metadata is in, so each is fetched once.
     files: HashMap<String, Vec<File>>,
+    /// Grab titles for magnets added without a display name, which qBit and
+    /// the arr queue alike call by their hash. Looked up once each.
+    titles: HashMap<String, Option<String>>,
     observations: Observations,
     budget: Budget,
     executor: Executor,
@@ -62,6 +65,7 @@ impl<Q: Qbit, A: Arr> Janitor<Q, A> {
             profiles_fetched: vec![None; arrs.len()],
             arrs,
             files: HashMap::new(),
+            titles: HashMap::new(),
             observations: Observations::new(2 * interval),
             budget: Budget::new(config.rules.budget.max_researches_per_day),
             executor: Executor::new(config.dry_run),
@@ -103,7 +107,7 @@ impl<Q: Qbit, A: Arr> Janitor<Q, A> {
             self.fetch_queue(i, now).await?;
         }
 
-        let snapshot = Snapshot::build(
+        let mut snapshot = Snapshot::build(
             &self.config,
             now,
             managed,
@@ -111,6 +115,8 @@ impl<Q: Qbit, A: Arr> Janitor<Q, A> {
             self.files.clone(),
             &self.views,
         );
+        self.fetch_titles(&snapshot).await;
+        name_by_title(&mut snapshot, &self.titles);
         self.observations.observe(now, &snapshot.torrents);
         let removals = self.rules.removals(&snapshot, &self.observations);
         let upkeep = self.rules.upkeep(&snapshot, &self.observations);
@@ -144,6 +150,27 @@ impl<Q: Qbit, A: Arr> Janitor<Q, A> {
         Ok(())
     }
 
+    /// Only names hang on these, so a failed lookup is logged and settled
+    /// for the hash rather than skipping the cycle.
+    async fn fetch_titles(&mut self, snapshot: &Snapshot) {
+        let unnamed = |hash: &str| snapshot.torrent(hash).is_some_and(|t| t.name == t.hash);
+        self.titles.retain(|hash, _| unnamed(hash));
+        for download in &snapshot.downloads {
+            if !unnamed(&download.hash) || self.titles.contains_key(&download.hash) {
+                continue;
+            }
+            let title = match self.arrs[download.arr].grabbed_title(&download.hash).await {
+                Ok(title) => title,
+                Err(error) => {
+                    let error = error_chain(&error);
+                    warn!(hash = %download.hash, %error, "grab title lookup failed; naming it by hash");
+                    None
+                }
+            };
+            self.titles.insert(download.hash.clone(), title);
+        }
+    }
+
     async fn fetch_queue(&mut self, i: usize, now: i64) -> Result<(), arr::Error> {
         let arr = &self.arrs[i];
         let view = &mut self.views[i];
@@ -154,6 +181,20 @@ impl<Q: Qbit, A: Arr> Janitor<Q, A> {
             self.profiles_fetched[i] = Some(now);
         }
         Ok(())
+    }
+}
+
+fn name_by_title(snapshot: &mut Snapshot, titles: &HashMap<String, Option<String>>) {
+    let title = |hash: &str| titles.get(hash).cloned().flatten();
+    for torrent in &mut snapshot.torrents {
+        if let Some(title) = title(&torrent.hash) {
+            torrent.name = title;
+        }
+    }
+    for download in &mut snapshot.downloads {
+        if let Some(title) = title(&download.hash) {
+            download.title = title;
+        }
     }
 }
 
@@ -178,7 +219,7 @@ mod tests {
     use super::*;
     use crate::arr::Kind;
     use crate::qbit::State;
-    use crate::testkit::{FakeArr, FakeQbit, config, file, record, torrent};
+    use crate::testkit::{FakeArr, FakeQbit, config, download, file, record, torrent};
 
     fn janitor(dry_run: bool, torrents: Vec<Torrent>) -> Janitor<FakeQbit, FakeArr> {
         let mut config = config();
@@ -333,5 +374,37 @@ mod tests {
         assert!(sonarr(&j).deletes.borrow().is_empty());
         j.tick(180 * 60).await;
         assert_eq!(*sonarr(&j).deletes.borrow(), [(5, true, false)]);
+    }
+
+    #[tokio::test]
+    async fn a_magnet_without_a_name_is_looked_up_once_in_the_grab_history() {
+        let mut magnet = torrent("cd", State::MetaDL, "tv-sonarr");
+        magnet.name = "cd".into();
+        let named = torrent("ef", State::MetaDL, "tv-sonarr");
+        let mut j = janitor(true, vec![magnet, named]);
+        j.arrs[0]
+            .titles
+            .insert("cd".into(), "Example.S01E02.1080p".into());
+        sonarr(&j)
+            .records
+            .borrow_mut()
+            .extend([record(1, "CD", 102), record(2, "EF", 103)]);
+        j.tick(0).await;
+        j.tick(60).await;
+        assert_eq!(sonarr(&j).title_lookups.get(), 1);
+        assert_eq!(j.titles["cd"].as_deref(), Some("Example.S01E02.1080p"));
+    }
+
+    #[test]
+    fn a_grab_title_names_the_torrent_and_its_download() {
+        let mut snapshot = Snapshot {
+            torrents: vec![torrent("cd", State::MetaDL, "tv-sonarr")],
+            downloads: vec![download("cd", "downloading", &[])],
+            ..Snapshot::default()
+        };
+        let titles = HashMap::from([("cd".to_owned(), Some("Example.S01E02.1080p".to_owned()))]);
+        name_by_title(&mut snapshot, &titles);
+        assert_eq!(snapshot.torrents[0].name, "Example.S01E02.1080p");
+        assert_eq!(snapshot.downloads[0].title, "Example.S01E02.1080p");
     }
 }

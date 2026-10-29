@@ -47,6 +47,17 @@ struct Page {
 }
 
 #[derive(Deserialize)]
+struct History {
+    records: Vec<Grab>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Grab {
+    source_title: String,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Media {
     id: i64,
@@ -128,6 +139,20 @@ impl Client {
             .into_iter()
             .map(|m| (m.id, m.quality_profile_id))
             .collect())
+    }
+
+    /// The release title the arr grabbed `hash` as. Both arrs store
+    /// qBittorrent hashes upper-cased and match `downloadId` exactly; event
+    /// type 1 is a grab in either.
+    pub async fn grabbed_title(&self, hash: &str) -> Result<Option<String>, Error> {
+        let id = hash.to_ascii_uppercase();
+        let query = [
+            ("downloadId", id.as_str()),
+            ("eventType", "1"),
+            ("pageSize", "1"),
+        ];
+        let history: History = self.get_json("/api/v3/history", &query).await?;
+        Ok(history.records.into_iter().next().map(|g| g.source_title))
     }
 
     fn url(&self, path: &str) -> String {
@@ -280,6 +305,43 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(profiles, HashMap::from([(1, 14), (2, 7)]));
+    }
+
+    #[tokio::test]
+    async fn looks_up_a_grab_by_its_upper_cased_hash() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sonarr/api/v3/history"))
+            .and(query_param("downloadId", "ABC123"))
+            .and(query_param("eventType", "1"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"page":1,"pageSize":1,"totalRecords":2,"records":[{"sourceTitle":"Example.S01E01.1080p.WEB-DL","eventType":"grabbed","downloadId":"ABC123"}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        let title = client(Kind::Sonarr, &server)
+            .grabbed_title("abc123")
+            .await
+            .unwrap();
+        assert_eq!(title.as_deref(), Some("Example.S01E01.1080p.WEB-DL"));
+    }
+
+    #[tokio::test]
+    async fn a_download_with_no_grab_has_no_title() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sonarr/api/v3/history"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"page":1,"pageSize":1,"totalRecords":0,"records":[]}"#),
+            )
+            .mount(&server)
+            .await;
+        let title = client(Kind::Sonarr, &server)
+            .grabbed_title("abc123")
+            .await
+            .unwrap();
+        assert_eq!(title, None);
     }
 
     #[tokio::test]

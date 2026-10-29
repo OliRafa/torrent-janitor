@@ -31,6 +31,8 @@ pub trait Arr {
     fn queue(&self) -> impl Future<Output = Result<Vec<QueueRecord>, arr::Error>>;
     fn quality_profiles(&self) -> impl Future<Output = Result<Vec<QualityProfile>, arr::Error>>;
     fn profiles_by_owner(&self) -> impl Future<Output = Result<HashMap<i64, i64>, arr::Error>>;
+    fn grabbed_title(&self, hash: &str)
+    -> impl Future<Output = Result<Option<String>, arr::Error>>;
     fn delete_queue_item(
         &self,
         id: i64,
@@ -92,6 +94,13 @@ impl Arr for arr::Client {
 
     fn profiles_by_owner(&self) -> impl Future<Output = Result<HashMap<i64, i64>, arr::Error>> {
         arr::Client::profiles_by_owner(self)
+    }
+
+    fn grabbed_title(
+        &self,
+        hash: &str,
+    ) -> impl Future<Output = Result<Option<String>, arr::Error>> {
+        arr::Client::grabbed_title(self, hash)
     }
 
     fn delete_queue_item(

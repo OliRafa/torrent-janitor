@@ -213,6 +213,9 @@ pub struct FakeArr {
     pub owners: HashMap<i64, i64>,
     pub down: Cell<bool>,
     pub profile_fetches: Cell<u32>,
+    /// Grab history titles by hash.
+    pub titles: HashMap<String, String>,
+    pub title_lookups: Cell<u32>,
     /// `(queue id, blocklist, skip_redownload)` per delete.
     pub deletes: RefCell<Vec<(i64, bool, bool)>>,
 }
@@ -226,6 +229,8 @@ impl FakeArr {
             owners: HashMap::new(),
             down: Cell::new(false),
             profile_fetches: Cell::new(0),
+            titles: HashMap::new(),
+            title_lookups: Cell::new(0),
             deletes: RefCell::default(),
         }
     }
@@ -261,6 +266,12 @@ impl Arr for FakeArr {
     async fn profiles_by_owner(&self) -> Result<HashMap<i64, i64>, arr::Error> {
         self.check("/api/v3/series")?;
         Ok(self.owners.clone())
+    }
+
+    async fn grabbed_title(&self, hash: &str) -> Result<Option<String>, arr::Error> {
+        self.check("/api/v3/history")?;
+        self.title_lookups.set(self.title_lookups.get() + 1);
+        Ok(self.titles.get(hash).cloned())
     }
 
     /// Like the real arr: one record id removes the whole download.

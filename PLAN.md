@@ -92,6 +92,12 @@ other downloads queued, and each search can grab one more.
 episode, so actions are grouped by `downloadId` and send one DELETE each.
 Deleting one record removes the whole download (verified on 2026-10-29).
 
+**Names:** a magnet added without a display name is called by its hash in qBit
+and in the arr queue alike, 40 of 297 torrents in the first dry-run. The log
+names it by the release title from the arr's grab history instead
+(`/api/v3/history?downloadId=<HASH>&eventType=1`; the id must be upper-case),
+looked up once per torrent. A failed lookup only leaves the hash.
+
 ## 4. Architecture
 
 ```
