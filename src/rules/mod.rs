@@ -2,9 +2,12 @@
 //! cycle's snapshot and observations and says what it would remove and why.
 //! Whether that happens, and how, is the planner's call.
 
+mod duplicate;
 mod failed_import;
 mod fake;
 mod stalled;
+
+use std::collections::HashSet;
 
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use regex::RegexSet;
@@ -93,6 +96,11 @@ impl RuleSet {
                 rules.failed_import.research,
             ));
         }
+        if rules.duplicate.enabled {
+            let taken: HashSet<&str> = removals.iter().map(|r| r.hash.as_str()).collect();
+            let duplicates = duplicate::evaluate(snapshot, rules.duplicate.keep, &taken);
+            removals.extend(duplicates);
+        }
         removals
     }
 }
@@ -148,6 +156,7 @@ mod tests {
         rules.fake.enabled = false;
         rules.stalled.enabled = false;
         rules.failed_import.enabled = false;
+        rules.duplicate.enabled = false;
         let snapshot = crate::testkit::troubled_snapshot();
         let observations = Observations::new(120);
         assert!(

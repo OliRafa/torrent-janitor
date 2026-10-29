@@ -1,4 +1,5 @@
 pub mod arr;
+pub mod budget;
 pub mod config;
 pub mod observe;
 pub mod qbit;
