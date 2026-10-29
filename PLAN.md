@@ -211,7 +211,7 @@ the next one starts.
    - Dockerfile (musl static → distroless)
    - CD to `ghcr.io/olirafa/torrent-janitor` with `main` and `sha-…` tags
      (Renovate pins `tag@digest`)
-10. **Deploy in home-servers-setup (dry-run):**
+10. **Deploy in home-servers-setup (dry-run, deployed 2026-10-29; compare from 2026-10-31):**
     - Deployment (Recreate, 1 replica), ConfigMap
     - env from the existing `sonarr-api-key`/`radarr-api-key` secrets
     - Prometheus scrape job in `additionalScrapeConfigs`
@@ -221,7 +221,7 @@ the next one starts.
 11. **Go live in localflix.** Turn off Torrentarr's torrent handling; it keeps
     running for missing-item search only. Drain the backlog under the per-cycle
     cap.
-12. **Bookstore instance**, qBit-only: `fake`, `free_space`, `recover`.
+12. **Bookstore instance (dry-run, deployed 2026-10-29)**, qBit-only: `fake`, `free_space`, `recover`.
 
 ## 7. Decisions (2026-10-29)
 
