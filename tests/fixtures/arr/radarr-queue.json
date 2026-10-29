@@ -1,0 +1,49 @@
+{
+  "page": 1,
+  "pageSize": 500,
+  "records": [
+    {
+      "added": "2026-08-28T22:41:09Z",
+      "customFormatScore": 750,
+      "customFormats": [],
+      "downloadClient": "qBittorrent",
+      "downloadClientHasPostImportCategory": false,
+      "downloadId": "C2BF832FF8084F6F08B030C14E569F1A448F4B70",
+      "errorMessage": "The download is stalled with no connections",
+      "id": 2000,
+      "indexer": "Example (Prowlarr)",
+      "languages": [
+        {
+          "id": 18,
+          "name": "Portuguese"
+        }
+      ],
+      "movieId": 501,
+      "protocol": "torrent",
+      "quality": {
+        "quality": {
+          "id": 4,
+          "modifier": "none",
+          "name": "HDTV-720p",
+          "resolution": 720,
+          "source": "tv"
+        },
+        "revision": {
+          "isRepack": false,
+          "real": 0,
+          "version": 1
+        }
+      },
+      "size": 3023454517,
+      "sizeleft": 3555637,
+      "status": "warning",
+      "statusMessages": [],
+      "title": "Example.Movie.2001.1080p.BluRay.x264-GRP",
+      "trackedDownloadState": "downloading",
+      "trackedDownloadStatus": "ok"
+    }
+  ],
+  "sortDirection": "ascending",
+  "sortKey": "timeleft",
+  "totalRecords": 1
+}

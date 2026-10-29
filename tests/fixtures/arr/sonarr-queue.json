@@ -1,0 +1,231 @@
+{
+  "page": 1,
+  "pageSize": 500,
+  "records": [
+    {
+      "added": "2026-08-23T22:56:44Z",
+      "customFormatScore": 75,
+      "customFormats": [],
+      "downloadClient": "qBittorrent",
+      "downloadClientHasPostImportCategory": false,
+      "downloadId": "2E617D7B1AD9273D63B0A441D0E57D5FBFA93C28",
+      "episodeHasFile": true,
+      "episodeId": 101,
+      "errorMessage": "The download is stalled with no connections",
+      "id": 1000,
+      "indexer": "Example (Prowlarr)",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "protocol": "torrent",
+      "quality": {
+        "quality": {
+          "id": 15,
+          "name": "WEBRip-1080p",
+          "resolution": 1080,
+          "source": "webRip"
+        },
+        "revision": {
+          "isRepack": false,
+          "real": 0,
+          "version": 1
+        }
+      },
+      "seasonNumber": 1,
+      "seriesId": 1,
+      "size": 71748653623,
+      "sizeleft": 33554431,
+      "status": "warning",
+      "statusMessages": [],
+      "title": "Example.Show.S01.1080p.WEB-DL-GRP",
+      "trackedDownloadState": "downloading",
+      "trackedDownloadStatus": "ok"
+    },
+    {
+      "added": "2026-08-23T22:56:44Z",
+      "customFormatScore": 75,
+      "customFormats": [],
+      "downloadClient": "qBittorrent",
+      "downloadClientHasPostImportCategory": false,
+      "downloadId": "2E617D7B1AD9273D63B0A441D0E57D5FBFA93C28",
+      "episodeHasFile": true,
+      "episodeId": 102,
+      "errorMessage": "The download is stalled with no connections",
+      "id": 1001,
+      "indexer": "Example (Prowlarr)",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "protocol": "torrent",
+      "quality": {
+        "quality": {
+          "id": 15,
+          "name": "WEBRip-1080p",
+          "resolution": 1080,
+          "source": "webRip"
+        },
+        "revision": {
+          "isRepack": false,
+          "real": 0,
+          "version": 1
+        }
+      },
+      "seasonNumber": 1,
+      "seriesId": 1,
+      "size": 71748653623,
+      "sizeleft": 33554431,
+      "status": "warning",
+      "statusMessages": [],
+      "title": "Example.Show.S01.1080p.WEB-DL-GRP",
+      "trackedDownloadState": "downloading",
+      "trackedDownloadStatus": "ok"
+    },
+    {
+      "added": "2026-08-23T22:56:44Z",
+      "customFormatScore": 75,
+      "customFormats": [],
+      "downloadClient": "qBittorrent",
+      "downloadClientHasPostImportCategory": false,
+      "downloadId": "2E617D7B1AD9273D63B0A441D0E57D5FBFA93C28",
+      "episodeHasFile": true,
+      "episodeId": 103,
+      "errorMessage": "The download is stalled with no connections",
+      "id": 1002,
+      "indexer": "Example (Prowlarr)",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "protocol": "torrent",
+      "quality": {
+        "quality": {
+          "id": 15,
+          "name": "WEBRip-1080p",
+          "resolution": 1080,
+          "source": "webRip"
+        },
+        "revision": {
+          "isRepack": false,
+          "real": 0,
+          "version": 1
+        }
+      },
+      "seasonNumber": 1,
+      "seriesId": 1,
+      "size": 71748653623,
+      "sizeleft": 33554431,
+      "status": "warning",
+      "statusMessages": [],
+      "title": "Example.Show.S01.1080p.WEB-DL-GRP",
+      "trackedDownloadState": "downloading",
+      "trackedDownloadStatus": "ok"
+    },
+    {
+      "added": "2026-10-07T00:12:18Z",
+      "customFormatScore": 400,
+      "customFormats": [],
+      "downloadClient": "qBittorrent",
+      "downloadClientHasPostImportCategory": false,
+      "downloadId": "ABCFB6FCFC4DEFFB67A8D861A4AA8689C3C320BF",
+      "episodeHasFile": false,
+      "episodeId": 201,
+      "errorMessage": "qBittorrent is downloading metadata",
+      "id": 1003,
+      "indexer": "Example (Prowlarr)",
+      "languages": [
+        {
+          "id": 5,
+          "name": "Italian"
+        },
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "protocol": "torrent",
+      "quality": {
+        "quality": {
+          "id": 13,
+          "name": "Bluray-480p",
+          "resolution": 480,
+          "source": "bluray"
+        },
+        "revision": {
+          "isRepack": false,
+          "real": 0,
+          "version": 1
+        }
+      },
+      "seasonNumber": 1,
+      "seriesId": 2,
+      "size": 0,
+      "sizeleft": 0,
+      "status": "queued",
+      "statusMessages": [],
+      "title": "abcfb6fcfc4deffb67a8d861a4aa8689c3c320bf",
+      "trackedDownloadState": "downloading",
+      "trackedDownloadStatus": "ok"
+    },
+    {
+      "added": "2026-08-11T09:33:21Z",
+      "customFormatScore": 0,
+      "customFormats": [],
+      "downloadClient": "qBittorrent",
+      "downloadClientHasPostImportCategory": false,
+      "downloadId": "86DEF7357B14E47DA2F58D89C57008D553924349",
+      "episodeHasFile": true,
+      "episodeId": 301,
+      "estimatedCompletionTime": "2026-10-29T08:19:33Z",
+      "id": 1004,
+      "indexer": "Example (Prowlarr)",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "protocol": "torrent",
+      "quality": {
+        "quality": {
+          "id": 4,
+          "name": "HDTV-720p",
+          "resolution": 720,
+          "source": "television"
+        },
+        "revision": {
+          "isRepack": false,
+          "real": 0,
+          "version": 1
+        }
+      },
+      "seasonNumber": 3,
+      "seriesId": 3,
+      "size": 1026555904,
+      "sizeleft": 0,
+      "status": "completed",
+      "statusMessages": [
+        {
+          "messages": [
+            "Not an upgrade for existing episode file(s). Existing quality: WEBDL-2160p. New Quality HDTV-720p."
+          ],
+          "title": "Example.Show.S03E01.720p.HDTV.x264-GRP"
+        }
+      ],
+      "timeleft": "00:00:00",
+      "title": "Example.Show.S03E01.720p.HDTV.x264-GRP",
+      "trackedDownloadState": "importPending",
+      "trackedDownloadStatus": "warning"
+    }
+  ],
+  "sortDirection": "ascending",
+  "sortKey": "timeleft",
+  "totalRecords": 5
+}
