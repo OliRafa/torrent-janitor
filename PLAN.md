@@ -66,7 +66,10 @@ and needs a maintainer; qBitrr has the same `added_on` bug.
    stalls for a minute would otherwise lose its rank to a dead one, and the
    first dry-run showed decisions flipping that way. An unfinished download
    the janitor hasn't watched for 15 minutes, after a restart too, isn't
-   ranked yet.
+   ranked yet. Nor is a magnet still fetching metadata: it is `stalled`'s,
+   which blocklists a dead one. Ranked, it lost at 15 minutes and went
+   unblocklisted before `stalled` could judge it at 30 (about 90 of the first 151
+   live duplicate removals).
 3. Otherwise take the highest progress.
 
 The top `keep` downloads stay, not just the best one: two run side by side, so a

@@ -20,7 +20,9 @@ type Candidate<'a> = (&'a Download, &'a Torrent, Tier);
 /// `taken` holds downloads another rule already removes this cycle; they
 /// must not count as better than the ones that stay. An unfinished download
 /// watched for less than `PROGRESS_WINDOW` sits out, after a restart too:
-/// until then a paused one and a dead one look the same.
+/// until then a paused one and a dead one look the same. So does a magnet
+/// still fetching metadata: it is the stalled rule's, which blocklists a dead
+/// one instead of leaving the arr free to grab it again.
 pub(super) fn evaluate(
     snapshot: &Snapshot,
     observations: &Observations,
@@ -93,6 +95,9 @@ enum Tier {
 fn tier(torrent: &Torrent, observation: Option<&Observation>, now: i64) -> Option<Tier> {
     if torrent.is_complete() {
         return Some(Tier::Complete);
+    }
+    if torrent.state.is_metadata() {
+        return None;
     }
     let observation = observation.filter(|o| now - o.first_seen >= PROGRESS_WINDOW)?;
     let running = observation
@@ -247,10 +252,20 @@ mod tests {
     fn stuck_downloads_rank_by_progress() {
         let grabs = [
             grab("a", State::StalledDL, 0.2, 9, &[101]),
-            grab("b", State::MetaDL, 0.0, 9, &[101]),
+            grab("b", State::Error, 0.0, 9, &[101]),
             grab("c", State::StalledDL, 0.7, 1, &[101]),
         ];
         assert_eq!(removed(&grabs, 2), ["b"]);
+    }
+
+    #[test]
+    fn a_magnet_fetching_metadata_is_left_to_the_stalled_rule() {
+        let grabs = [
+            grab("magnet", State::MetaDL, 0.0, 9, &[101]),
+            grab("a", State::StalledDL, 0.0, 1, &[101]),
+            grab("b", State::StalledDL, 0.0, 2, &[101]),
+        ];
+        assert_eq!(removed(&grabs, 1), ["a"], "neither removed nor ranked");
     }
 
     #[test]
